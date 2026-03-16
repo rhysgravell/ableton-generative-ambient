@@ -18,14 +18,17 @@ This repo contains all the tooling, scripts, configs and documentation for the B
 buried-landscapes/
 ├── README.md
 ├── midi/
-│   └── generate_ambient_midi.py     # Generative MIDI script (G minor, 80bpm)
+│   └── generate_ambient_midi.py        # Generative MIDI script (G minor, 80bpm)
 ├── racks/
-│   ├── generate_spectral_rack.py    # .adg rack generator script
-│   └── DeepField_schema.xml         # Live 12 .adg reference schema
+│   ├── scripts/
+│   │   ├── generate_spectral_rack.py   # .adg rack generator script
+│   │   └── adg_tools.sh                # Inspect / unpack / repack .adg files
+│   └── schemas/
+│       └── DeepField_schema.xml        # Live 12 .adg reference schema
 ├── docs/
 │   └── buried_landscapes_reference.md  # Full project reference
 └── config/
-    └── ghostty_config               # Terminal config (Ghostty)
+    └── ghostty_config                  # Terminal config (Ghostty)
 ```
 
 ---
@@ -34,15 +37,10 @@ buried-landscapes/
 
 Generates ambient MIDI clips in G minor at 80bpm — slow evolving chords and generative melodic sequences.
 
-### Setup
-
-```bash
-pip3 install mido
-```
-
 ### Run
 
 ```bash
+pip3 install mido
 python3 midi/generate_ambient_midi.py
 ```
 
