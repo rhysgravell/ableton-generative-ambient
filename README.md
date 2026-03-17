@@ -16,40 +16,132 @@ This repo contains all the tooling, scripts, configs and documentation for the B
 
 ```
 buried-landscapes/
-├── README.md
 ├── midi/
-│   └── generate_ambient_midi.py        # Generative MIDI script (G minor, 80bpm)
+│   ├── generate_ambient_midi.py    # Generative MIDI — configurable key, scale, BPM
+│   ├── analyze_midi.py             # MIDI analyzer — key detection, velocity stats
+│   └── mutate_midi.py              # MIDI transformer — transpose, humanize, reverse, stretch
+├── tools/
+│   ├── bpm_sync.py                 # Delay/LFO sync time calculator
+│   └── scale_explorer.py          # Scale notes, chords, and mode relationships
+├── scripts/
+│   └── organize_project.py        # Organize Ableton Ideas folder into subfolders
 ├── racks/
 │   ├── scripts/
-│   │   ├── generate_spectral_rack.py   # .adg rack generator script
+│   │   ├── generate_spectral_rack.py   # .adg rack generator
 │   │   └── adg_tools.sh                # Inspect / unpack / repack .adg files
 │   └── schemas/
 │       └── DeepField_schema.xml        # Live 12 .adg reference schema
 ├── docs/
 │   └── buried_landscapes_reference.md  # Full project reference
 └── config/
-    └── ghostty_config                  # Terminal config (Ghostty)
+    └── ghostty_config              # Terminal config (Ghostty)
 ```
 
 ---
 
 ## MIDI Generation
 
-Generates ambient MIDI clips in G minor at 80bpm — slow evolving chords and generative melodic sequences.
+Generates ambient MIDI clips for any key and scale. Defaults to G minor at 80bpm.
+
+### Install
+
+```bash
+pip3 install mido
+```
 
 ### Run
 
 ```bash
-pip3 install mido
+# Defaults — G minor, 80bpm, 16 bars, all four patterns
 python3 midi/generate_ambient_midi.py
+
+# Custom key and scale
+python3 midi/generate_ambient_midi.py --key D --scale dorian --bpm 72
+
+# Specific patterns only
+python3 midi/generate_ambient_midi.py --patterns chords bass
+
+# Reproducible output
+python3 midi/generate_ambient_midi.py --seed 42
+
+# Full options
+python3 midi/generate_ambient_midi.py --help
 ```
+
+### Output files
 
 Output saved to `~/MIDI/Buried_Landscapes/Claude_MIDI/`:
 
 | File | Description |
 |------|-------------|
-| `slow_chords.mid` | Slow evolving chord pads, 1–2 bar chords |
+| `slow_chords.mid` | Slow evolving chord pads, 1–2 bar sustains |
 | `generative.mid` | Stepwise melodic sequence with rests |
+| `bass_drone.mid` | Very slow root/fifth movement in low register |
+| `arp.mid` | Slow arpeggiated chord sequence, chord changes every 2 bars |
+
+### Available scales
+
+`minor` · `dorian` · `phrygian` · `lydian` · `mixolydian` · `major` · `pentatonic`
+
+---
+
+## MIDI Tools
+
+### Analyze
+
+Inspect a MIDI file — BPM, duration, note count, velocity range, and best-fit key/scale detection.
+
+```bash
+python3 midi/analyze_midi.py slow_chords.mid
+python3 midi/analyze_midi.py *.mid --verbose   # includes note distribution chart
+```
+
+### Mutate
+
+Transform an existing MIDI file. Transforms stack in a single pass.
+
+```bash
+# Transpose to a new key
+python3 midi/mutate_midi.py slow_chords.mid --transpose -2
+
+# Add subtle timing and velocity variation
+python3 midi/mutate_midi.py generative.mid --humanize 0.4
+
+# Reverse note order in time
+python3 midi/mutate_midi.py generative.mid --reverse
+
+# Time-stretch (2.0 = twice as slow, notes stay in same BPM grid)
+python3 midi/mutate_midi.py arp.mid --stretch 1.5
+
+# Stack transforms
+python3 midi/mutate_midi.py slow_chords.mid --reverse --transpose 5 --humanize
+```
+
+Output defaults to `<input>_mutated.mid` alongside the source file.
+
+---
+
+## Music Theory Tools
+
+### BPM Sync Calculator
+
+Prints delay times (ms) and LFO rates (Hz) for every common note division at a given BPM. Useful for dialling in delays, reverb pre-delays, and LFO rates in Ableton.
+
+```bash
+python3 tools/bpm_sync.py          # defaults to 80 BPM
+python3 tools/bpm_sync.py 90
+```
+
+### Scale Explorer
+
+Prints scale notes with MIDI numbers and Hz values, diatonic chord chart, and parallel mode relationships for any key and scale. The Spectral Resonator root frequency is highlighted for easy reference.
+
+```bash
+python3 tools/scale_explorer.py              # G minor (default)
+python3 tools/scale_explorer.py D dorian
+python3 tools/scale_explorer.py Bb major
+python3 tools/scale_explorer.py --list       # show all available scales
+```
 
 ---
 
@@ -79,13 +171,32 @@ Ableton rack presets are gzipped XML — you can read and edit them directly:
 
 ```bash
 # View schema
-cat MyRack.adg | gunzip | xmllint --format -
+./racks/scripts/adg_tools.sh inspect MyRack.adg
 
-# Save as XML
-cat MyRack.adg | gunzip > MyRack.xml
+# Unpack to editable XML
+./racks/scripts/adg_tools.sh unpack MyRack.adg
 
-# Repack to .adg
-gzip -c MyRack.xml > MyRack.adg
+# Repack back to .adg
+./racks/scripts/adg_tools.sh repack MyRack.xml
+
+# Diff two racks
+./racks/scripts/adg_tools.sh diff RackA.adg RackB.adg
+```
+
+---
+
+## Project Utilities
+
+### Organize Ableton Ideas folder
+
+Moves each `.als` file into its own named subfolder with standard subfolders inside (`Samples/Recorded`, `Samples/Imported`, `Samples/Bounces`, `Versions`).
+
+```bash
+# Preview first
+python3 scripts/organize_project.py ~/Ableton/Buried_Landscapes/Ideas --dry-run
+
+# Apply
+python3 scripts/organize_project.py ~/Ableton/Buried_Landscapes/Ideas
 ```
 
 ---
@@ -131,10 +242,9 @@ cp config/ghostty_config ~/.config/ghostty/config
 
 ## Notes
 
-- All MIDI in G minor, 80bpm
-- Rack presets saved to `~/Music/Ableton/User Library/Audio-effect-racks/Ambience/`
 - MIDI output to `~/MIDI/Buried_Landscapes/Claude_MIDI/`
-- Ableton project files at `/Users/rhysgravell/Ableton/Buried_Landscapes/`
+- Rack presets saved to `~/Music/Ableton/User Library/Audio-effect-racks/Ambience/`
+- Ableton project files at `~/Ableton/Buried_Landscapes/`
 
 ---
 
