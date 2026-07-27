@@ -110,7 +110,7 @@ def save_mid(events: list, tempo: int, tpb: int, path: str) -> None:
 # Pattern generators
 # ---------------------------------------------------------------------------
 
-def make_slow_chords(chords, bars, bar_ticks, tpb, tempo, out_dir) -> str:
+def make_slow_chords(chords, bars, bar_ticks, tpb, tempo, out_dir, key, scale) -> str:
     """Slow chord pads — each chord held for 1 or 2 bars."""
     events = []
     bar = 0
@@ -125,12 +125,12 @@ def make_slow_chords(chords, bars, bar_ticks, tpb, tempo, out_dir) -> str:
             events.append((t + dur_ticks, "off", note, 0))
         bar += dur_bars
 
-    path = os.path.join(out_dir, "slow_chords.mid")
+    path = os.path.join(out_dir, f"slow_chords_{key}_{scale}.mid")
     save_mid(events, tempo, tpb, path)
     return path
 
 
-def make_melodic(scale, bars, bar_ticks, tpb, tempo, out_dir) -> str:
+def make_melodic(scale, bars, bar_ticks, tpb, tempo, out_dir, key, scale_name) -> str:
     """Stepwise melodic sequence — slow notes with occasional rests."""
     events = []
     total = bars * bar_ticks
@@ -150,12 +150,12 @@ def make_melodic(scale, bars, bar_ticks, tpb, tempo, out_dir) -> str:
         events.append((t + length, "off", note, 0))
         t += length
 
-    path = os.path.join(out_dir, "generative.mid")
+    path = os.path.join(out_dir, f"generative_{key}_{scale_name}.mid")
     save_mid(events, tempo, tpb, path)
     return path
 
 
-def make_bass_drone(root, intervals, bars, bar_ticks, tpb, tempo, out_dir) -> str:
+def make_bass_drone(root, intervals, bars, bar_ticks, tpb, tempo, out_dir, key, scale) -> str:
     """Very slow, low-register root/fifth drone movement."""
     bass_root = root - 12   # one octave below melody root (G2 for default G3)
     # Clamp to valid range
@@ -182,12 +182,12 @@ def make_bass_drone(root, intervals, bars, bar_ticks, tpb, tempo, out_dir) -> st
         bar += dur_bars
         i += 1
 
-    path = os.path.join(out_dir, "bass_drone.mid")
+    path = os.path.join(out_dir, f"bass_drone_{key}_{scale}.mid")
     save_mid(events, tempo, tpb, path)
     return path
 
 
-def make_arp(chords, bars, bar_ticks, tpb, tempo, out_dir) -> str:
+def make_arp(chords, bars, bar_ticks, tpb, tempo, out_dir, key, scale) -> str:
     """
     Slow arpeggiated chord pattern — cycles through chord tones one by one.
     Step length: half or dotted-half. Chord changes every 2 bars.
@@ -223,7 +223,7 @@ def make_arp(chords, bars, bar_ticks, tpb, tempo, out_dir) -> str:
         t += step
         note_idx += 1
 
-    path = os.path.join(out_dir, "arp.mid")
+    path = os.path.join(out_dir, f"arp_{key}_{scale}.mid")
     save_mid(events, tempo, tpb, path)
     return path
 
@@ -279,16 +279,16 @@ if __name__ == "__main__":
 
     requested = args.patterns
     if "chords" in requested:
-        path = make_slow_chords(chords, args.bars, bar_ticks, TPB, tempo, out_dir)
-        print(f"  slow_chords.mid  →  {path}")
+        path = make_slow_chords(chords, args.bars, bar_ticks, TPB, tempo, out_dir, args.key, args.scale)
+        print(f"  {os.path.basename(path)}  →  {path}")
     if "melodic" in requested:
-        path = make_melodic(scale_notes, args.bars, bar_ticks, TPB, tempo, out_dir)
-        print(f"  generative.mid   →  {path}")
+        path = make_melodic(scale_notes, args.bars, bar_ticks, TPB, tempo, out_dir, args.key, args.scale)
+        print(f"  {os.path.basename(path)}  →  {path}")
     if "bass" in requested:
-        path = make_bass_drone(root, intervals, args.bars, bar_ticks, TPB, tempo, out_dir)
-        print(f"  bass_drone.mid   →  {path}")
+        path = make_bass_drone(root, intervals, args.bars, bar_ticks, TPB, tempo, out_dir, args.key, args.scale)
+        print(f"  {os.path.basename(path)}  →  {path}")
     if "arp" in requested:
-        path = make_arp(chords, args.bars, bar_ticks, TPB, tempo, out_dir)
-        print(f"  arp.mid          →  {path}")
+        path = make_arp(chords, args.bars, bar_ticks, TPB, tempo, out_dir, args.key, args.scale)
+        print(f"  {os.path.basename(path)}  →  {path}")
 
     print(f"\nDrop into Ableton on an instrument track. Set project to {args.bpm}bpm.")
