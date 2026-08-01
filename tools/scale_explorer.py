@@ -158,7 +158,7 @@ def print_modes(key: str, scale_name: str) -> None:
     for i, mode in enumerate(MODE_ORDER):
         diff = i - pos
         if diff == 0:
-            marker = f"← you are here"
+            marker = "← you are here"
         elif diff > 0:
             marker = f"{'♯' * diff} brighter"
         else:

@@ -7,6 +7,8 @@
 #   ./adg_tools.sh repack  <file.xml>   — Repack to <file.adg>
 #   ./adg_tools.sh diff    <a.adg> <b.adg>  — Diff two racks as XML
 
+set -euo pipefail
+
 inspect() {
     local file="$1"
     [[ -f "$file" ]] || { echo "File not found: $file"; exit 1; }
@@ -33,10 +35,10 @@ diff_racks() {
     local a="$1" b="$2"
     [[ -f "$a" && -f "$b" ]] || { echo "Both files required"; exit 1; }
     diff <(gunzip -c "$a" | xmllint --format -) \
-         <(gunzip -c "$b" | xmllint --format -)
+         <(gunzip -c "$b" | xmllint --format -) || true
 }
 
-case "$1" in
+case "${1:-}" in
     inspect) inspect "$2" ;;
     unpack)  unpack  "$2" ;;
     repack)  repack  "$2" ;;

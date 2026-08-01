@@ -26,7 +26,6 @@ Outputs to ~/MIDI/Buried_Landscapes/Claude_MIDI/ by default.
 import os
 import random
 import argparse
-import mido
 from mido import MidiFile, MidiTrack, Message, MetaMessage
 
 

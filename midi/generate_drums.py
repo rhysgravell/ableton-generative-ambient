@@ -25,7 +25,6 @@ Pipe the result through midi/mutate_midi.py --humanize for a looser feel.
 import os
 import random
 import argparse
-import mido
 from mido import MidiFile, MidiTrack, Message, MetaMessage
 
 
