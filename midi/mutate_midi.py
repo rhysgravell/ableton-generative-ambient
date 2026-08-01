@@ -24,13 +24,11 @@ Usage:
 """
 
 import argparse
-import os
 import random
 import sys
 from pathlib import Path
 
 try:
-    import mido
     from mido import MidiFile, MidiTrack, Message, MetaMessage
 except ImportError:
     print("Error: mido not installed. Run: pip3 install mido")
@@ -164,6 +162,10 @@ def do_reverse(events: list) -> list:
             if msg.note in active:
                 start, vel = active.pop(msg.note)
                 pairs.append((start, abs_t, msg.note, vel))
+
+    if active:
+        print(f"  Warning: {len(active)} note(s) with no matching note_off "
+              f"were dropped during reverse")
 
     result = list(other_events)
     for start, end, note, vel in pairs:
