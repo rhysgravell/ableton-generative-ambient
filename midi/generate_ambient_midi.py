@@ -3,6 +3,8 @@
 Buried Landscapes — Generative MIDI
 
 Generates ambient MIDI clips with configurable key, scale, BPM, and pattern types.
+Chords, arp and bass all follow one shared chord progression, so the clips layer
+together in tune.
 
 Install: pip3 install mido
 
@@ -11,14 +13,17 @@ Usage:
   python3 midi/generate_ambient_midi.py --key D --scale dorian
   python3 midi/generate_ambient_midi.py --bpm 60 --bars 32
   python3 midi/generate_ambient_midi.py --patterns chords melodic  # only these two
+  python3 midi/generate_ambient_midi.py --progression i-VI-III-VII # explicit progression
+  python3 midi/generate_ambient_midi.py --progression lament       # named progression
+  python3 midi/generate_ambient_midi.py --chord-bars 4             # slower harmonic rhythm
   python3 midi/generate_ambient_midi.py --seed 42                  # reproducible output
   python3 midi/generate_ambient_midi.py --output ~/Desktop
 
 Patterns:
-  chords   — slow chord pads, 1–2 bar sustains
-  melodic  — stepwise melody with rests
-  bass     — very slow root/fifth drone in low register
-  arp      — slow arpeggiated chord sequence
+  chords   — slow chord pads, one chord per progression step
+  melodic  — stepwise melody with rests, biased toward the current chord tones
+  bass     — very slow root/fifth drone following the progression
+  arp      — arpeggiated chord tones, chord changes with the progression
 
 Outputs to ~/MIDI/Buried_Landscapes/Claude_MIDI/ by default.
 """
@@ -49,6 +54,81 @@ ROOT_NOTES = {
     "Ab": 56, "A": 57, "A#": 58, "Bb": 58, "B": 59,
 }
 
+BASS_FLOOR = 36   # C2 — bottom of the octave the bass drone is folded into
+
+
+# ---------------------------------------------------------------------------
+# Chord progressions
+#
+# Progressions are written in roman numerals but resolved by scale degree, so
+# the same spec works in any mode — the scale supplies the chord quality.
+# Case is cosmetic; a trailing 7 asks for a seventh chord (e.g. i7-iv7).
+# ---------------------------------------------------------------------------
+
+ROMAN_DEGREES = {"i": 0, "ii": 1, "iii": 2, "iv": 3, "v": 4, "vi": 5, "vii": 6}
+
+PROGRESSIONS = {
+    "drift":     "i-VI",             # two-chord hover
+    "lament":    "i-VI-III-VII",     # the classic minor loop
+    "descent":   "i-VII-VI-v",       # stepwise fall
+    "suspended": "i-iv-i-v",         # unresolved, circling
+    "bloom":     "i-III-VII-iv",     # brightening then back
+    "static":    "i",                # single chord drone
+}
+
+# Weight per scale degree for --progression random. Tonic, subdominant and
+# submediant get the most pull; the leading-tone degree the least.
+DEGREE_WEIGHTS = [4, 1, 3, 4, 3, 4, 2]
+
+
+def parse_progression(spec: str, num_degrees: int) -> list:
+    """
+    'i-VI-III-VII7' → [(0, False), (5, False), (2, False), (6, True)]
+
+    Returns (degree_index, is_seventh) pairs. Accepts '-', ',' or spaces as
+    separators, and resolves named progressions from PROGRESSIONS.
+    """
+    spec = PROGRESSIONS.get(spec.strip().lower(), spec)
+    tokens = [t for t in spec.replace(",", " ").replace("-", " ").split() if t]
+    if not tokens:
+        raise ValueError("empty progression")
+
+    steps = []
+    for token in tokens:
+        seventh = token.endswith("7")
+        numeral = token[:-1] if seventh else token
+        degree = ROMAN_DEGREES.get(numeral.lower())
+        if degree is None:
+            raise ValueError(
+                f"unknown chord '{token}' — use i–vii, optionally with a trailing 7"
+            )
+        if degree >= num_degrees:
+            raise ValueError(
+                f"'{token}' is degree {degree + 1}, but this scale only has "
+                f"{num_degrees} degrees"
+            )
+        steps.append((degree, seventh))
+    return steps
+
+
+def random_progression(num_degrees: int, length: int = 4) -> list:
+    """Weighted random walk over scale degrees, always starting on the tonic."""
+    weights = DEGREE_WEIGHTS[:num_degrees] or [1] * num_degrees
+    steps = [(0, False)]
+    while len(steps) < length:
+        degrees = list(range(num_degrees))
+        # Avoid repeating the previous chord — ambient, but not stuck.
+        choices = [d for d in degrees if d != steps[-1][0]]
+        picks = random.choices(choices, weights=[weights[d] for d in choices])
+        steps.append((picks[0], random.random() < 0.35))
+    return steps
+
+
+def format_progression(steps: list) -> str:
+    """[(0, False), (5, True)] → 'i-VI7' (lowercase numerals, display only)."""
+    numerals = ["i", "ii", "iii", "iv", "v", "vi", "vii"]
+    return "-".join(numerals[d] + ("7" if s else "") for d, s in steps)
+
 
 def build_scale(root: int, intervals: list, octaves: int = 3) -> list:
     """MIDI notes for a scale across multiple octaves."""
@@ -61,23 +141,27 @@ def build_scale(root: int, intervals: list, octaves: int = 3) -> list:
     return notes
 
 
-def build_chords(root: int, intervals: list) -> list:
+def diatonic_chord(root: int, intervals: list, degree: int, seventh: bool = False) -> list:
     """
-    Derive diatonic triads and 7th chords by stacking every-other scale degree.
+    Chord built by stacking every-other scale degree from `degree`.
     Uses a 2-octave extended scale so wrapping degrees stay in the upper octave.
-    Returns a flat list of [triad, 7th, triad, 7th, ...] for each scale degree.
     """
     n = len(intervals)
-    # 2-octave extended scale: degree i lives at intervals[i % n] + (i // n)*12
-    ext = [root + intervals[i % n] + (i // n) * 12 for i in range(n * 2)]
+    ext = [root + intervals[i % n] + (i // n) * 12 for i in range(n * 3)]
+    notes = [ext[degree], ext[degree + 2], ext[degree + 4]]
+    if seventh:
+        notes.append(ext[degree + 6])
+    return [x for x in notes if 0 <= x <= 127]
 
-    chords = []
-    for deg in range(n):
-        triad   = [ext[deg], ext[deg + 2], ext[deg + 4]]
-        seventh = triad + [ext[deg + 6]]
-        chords.append(triad)
-        chords.append(seventh)
-    return chords
+
+def build_progression_chords(root: int, intervals: list, steps: list) -> list:
+    """Progression steps → one list of MIDI notes per step."""
+    return [diatonic_chord(root, intervals, deg, sev) for deg, sev in steps]
+
+
+def chord_at_bar(chords: list, bar: int, chord_bars: int) -> list:
+    """The progression chord sounding at a given bar, looping the progression."""
+    return chords[(bar // chord_bars) % len(chords)]
 
 
 # ---------------------------------------------------------------------------
@@ -109,13 +193,13 @@ def save_mid(events: list, tempo: int, tpb: int, path: str) -> None:
 # Pattern generators
 # ---------------------------------------------------------------------------
 
-def make_slow_chords(chords, bars, bar_ticks, tpb, tempo, out_dir, key, scale) -> str:
-    """Slow chord pads — each chord held for 1 or 2 bars."""
+def make_slow_chords(chords, chord_bars, bars, bar_ticks, tpb, tempo, out_dir, key, scale) -> str:
+    """Slow chord pads — one progression chord per step, held for the full step."""
     events = []
     bar = 0
     while bar < bars:
-        chord = random.choice(chords)
-        dur_bars = min(random.choice([1, 1, 2]), bars - bar)
+        chord = chord_at_bar(chords, bar, chord_bars)
+        dur_bars = min(chord_bars, bars - bar)
         t = bar * bar_ticks
         dur_ticks = dur_bars * bar_ticks
         vel = random.randint(40, 65)
@@ -129,8 +213,11 @@ def make_slow_chords(chords, bars, bar_ticks, tpb, tempo, out_dir, key, scale) -
     return path
 
 
-def make_melodic(scale, bars, bar_ticks, tpb, tempo, out_dir, key, scale_name) -> str:
-    """Stepwise melodic sequence — slow notes with occasional rests."""
+def make_melodic(scale, chords, chord_bars, bars, bar_ticks, tpb, tempo, out_dir, key, scale_name) -> str:
+    """
+    Stepwise melodic sequence — slow notes with occasional rests.
+    Notes lean toward the tones of whichever progression chord is sounding.
+    """
     events = []
     total = bars * bar_ticks
     t = 0
@@ -142,8 +229,15 @@ def make_melodic(scale, bars, bar_ticks, tpb, tempo, out_dir, key, scale_name) -
         if random.random() < 0.3:
             t += min(random.choice(rest_lengths), remaining)
             continue
+
+        chord = chord_at_bar(chords, t // bar_ticks, chord_bars)
+        chord_pcs = {n % 12 for n in chord}
+        chord_tones = [n for n in scale if n % 12 in chord_pcs]
+        # 65% chord tone, otherwise anywhere in the scale — colour without clash
+        pool = chord_tones if chord_tones and random.random() < 0.65 else scale
+
         length = min(random.choice(note_lengths), remaining)
-        note = random.choice(scale)
+        note = random.choice(pool)
         vel = random.randint(45, 70)
         events.append((t, "on", note, vel))
         events.append((t + length, "off", note, 0))
@@ -154,57 +248,64 @@ def make_melodic(scale, bars, bar_ticks, tpb, tempo, out_dir, key, scale_name) -
     return path
 
 
-def make_bass_drone(root, intervals, bars, bar_ticks, tpb, tempo, out_dir, key, scale) -> str:
-    """Very slow, low-register root/fifth drone movement."""
-    bass_root = root - 12   # one octave below melody root (G2 for default G3)
-    # Clamp to valid range
-    while bass_root < 12:
-        bass_root += 12
-
-    fifth_iv = intervals[4] if len(intervals) > 4 else 7
-    bass_fifth = bass_root + fifth_iv
-
-    # Cycle: root, fifth, root, octave-above-root
-    pattern = [bass_root, bass_fifth, bass_root, bass_root + 12]
-    pattern = [n for n in pattern if 0 <= n <= 127]
+def make_bass_drone(chords, chord_bars, bars, bar_ticks, tpb, tempo, out_dir, key, scale) -> str:
+    """
+    Very slow, low-register drone on the root of each progression chord.
+    Steps of 4 bars or longer move to the fifth of the chord halfway through.
+    """
+    # Fold chord tones into one fixed bass octave (C2–B2) so the drone sits in
+    # the same register whichever degree the progression is on.
+    def to_bass_register(note: int) -> int:
+        return BASS_FLOOR + note % 12
 
     events = []
-    bar, i = 0, 0
+    bar = 0
     while bar < bars:
-        dur_bars = min(random.choice([2, 2, 4]), bars - bar)
-        t = bar * bar_ticks
-        dur_ticks = dur_bars * bar_ticks
-        note = pattern[i % len(pattern)]
-        vel = random.randint(30, 50)
-        events.append((t, "on", note, vel))
-        events.append((t + dur_ticks, "off", note, 0))
+        chord = chord_at_bar(chords, bar, chord_bars)
+        dur_bars = min(chord_bars, bars - bar)
+        root = to_bass_register(chord[0])
+        fifth = to_bass_register(chord[2]) if len(chord) > 2 else root
+
+        # Long steps get a root → fifth move; short ones stay put.
+        segments = [(root, dur_bars)]
+        if dur_bars >= 4:
+            half = dur_bars // 2
+            segments = [(root, half), (fifth, dur_bars - half)]
+
+        offset = bar
+        for note, seg_bars in segments:
+            t = offset * bar_ticks
+            vel = random.randint(30, 50)
+            events.append((t, "on", note, vel))
+            events.append((t + seg_bars * bar_ticks, "off", note, 0))
+            offset += seg_bars
+
         bar += dur_bars
-        i += 1
 
     path = os.path.join(out_dir, f"bass_drone_{key}_{scale}.mid")
     save_mid(events, tempo, tpb, path)
     return path
 
 
-def make_arp(chords, bars, bar_ticks, tpb, tempo, out_dir, key, scale) -> str:
+def make_arp(chords, chord_bars, bars, bar_ticks, tpb, tempo, out_dir, key, scale) -> str:
     """
-    Slow arpeggiated chord pattern — cycles through chord tones one by one.
-    Step length: half or dotted-half. Chord changes every 2 bars.
+    Slow arpeggiated pattern — cycles through the tones of the current
+    progression chord one by one. Step length: half or dotted-half.
     """
     events = []
     total = bars * bar_ticks
     t = 0
     step_lengths = [tpb * 2, tpb * 3]   # half, dotted-half (ambient pace)
-    chord_len = bar_ticks * 2            # change chord every 2 bars
-    next_change = chord_len
-    chord = random.choice(chords)
+    current_step = -1
+    chord = chords[0]
     note_idx = 0
 
     while t < total:
         remaining = total - t
-        if t >= next_change:
-            chord = random.choice(chords)
-            next_change += chord_len
+        step_index = (t // bar_ticks) // chord_bars
+        if step_index != current_step:
+            chord = chord_at_bar(chords, t // bar_ticks, chord_bars)
+            current_step = step_index
             note_idx = 0
 
         step = min(random.choice(step_lengths), remaining)
@@ -235,10 +336,14 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         description="Buried Landscapes — Generative Ambient MIDI generator",
         formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="Examples:\n"
-               "  python3 midi/generate_ambient_midi.py\n"
-               "  python3 midi/generate_ambient_midi.py --key D --scale dorian --bpm 72\n"
-               "  python3 midi/generate_ambient_midi.py --patterns chords bass --seed 7\n",
+        epilog="Named progressions:\n"
+               + "".join(f"  {name:<10} {spec}\n" for name, spec in PROGRESSIONS.items())
+               + "\nExamples:\n"
+                 "  python3 midi/generate_ambient_midi.py\n"
+                 "  python3 midi/generate_ambient_midi.py --key D --scale dorian --bpm 72\n"
+                 "  python3 midi/generate_ambient_midi.py --progression i-VI-III-VII\n"
+                 "  python3 midi/generate_ambient_midi.py --progression lament --chord-bars 4\n"
+                 "  python3 midi/generate_ambient_midi.py --patterns chords bass --seed 7\n",
     )
     parser.add_argument("--key", default="G", choices=sorted(ROOT_NOTES.keys()),
                         help="Root note (default: G)")
@@ -252,12 +357,25 @@ if __name__ == "__main__":
                         choices=["chords", "melodic", "bass", "arp"],
                         default=["chords", "melodic", "bass", "arp"],
                         help="Patterns to generate (default: all four)")
+    parser.add_argument("--progression", default="random",
+                        help="Chord progression shared by chords, arp and bass — a named "
+                             "progression (%s), a roman numeral spec like i-VI-III-VII, "
+                             "or 'random' (default)" % ", ".join(PROGRESSIONS))
+    parser.add_argument("--chord-bars", type=int, default=2,
+                        help="Bars per progression step (default: 2)")
     parser.add_argument("--seed", type=int, default=None,
                         help="Random seed for reproducible output")
     parser.add_argument("--output", default=None,
                         help="Output directory (default: ~/MIDI/Buried_Landscapes/Claude_MIDI)")
 
     args = parser.parse_args()
+
+    if args.bars < 1:
+        parser.error("--bars must be at least 1")
+    if args.chord_bars < 1:
+        parser.error("--chord-bars must be at least 1")
+    if args.bpm < 1:
+        parser.error("--bpm must be at least 1")
 
     if args.seed is not None:
         random.seed(args.seed)
@@ -269,25 +387,40 @@ if __name__ == "__main__":
     root = ROOT_NOTES[args.key]
     intervals = SCALES[args.scale]
     scale_notes = build_scale(root, intervals)
-    chords = build_chords(root, intervals)
+
+    try:
+        if args.progression.strip().lower() == "random":
+            steps = random_progression(len(intervals))
+        else:
+            steps = parse_progression(args.progression, len(intervals))
+    except ValueError as exc:
+        parser.error(str(exc))
+
+    chords = build_progression_chords(root, intervals, steps)
 
     out_dir = args.output or os.path.expanduser("~/MIDI/Buried_Landscapes/Claude_MIDI")
     os.makedirs(out_dir, exist_ok=True)
 
-    print(f"Buried Landscapes — {args.key} {args.scale}, {args.bpm}bpm, {args.bars} bars\n")
+    print(f"Buried Landscapes — {args.key} {args.scale}, {args.bpm}bpm, {args.bars} bars")
+    print(f"Progression: {format_progression(steps)} "
+          f"({args.chord_bars} bar{'s' if args.chord_bars != 1 else ''} per chord)\n")
 
     requested = args.patterns
     if "chords" in requested:
-        path = make_slow_chords(chords, args.bars, bar_ticks, TPB, tempo, out_dir, args.key, args.scale)
+        path = make_slow_chords(chords, args.chord_bars, args.bars, bar_ticks, TPB, tempo,
+                                out_dir, args.key, args.scale)
         print(f"  {os.path.basename(path)}  →  {path}")
     if "melodic" in requested:
-        path = make_melodic(scale_notes, args.bars, bar_ticks, TPB, tempo, out_dir, args.key, args.scale)
+        path = make_melodic(scale_notes, chords, args.chord_bars, args.bars, bar_ticks, TPB,
+                            tempo, out_dir, args.key, args.scale)
         print(f"  {os.path.basename(path)}  →  {path}")
     if "bass" in requested:
-        path = make_bass_drone(root, intervals, args.bars, bar_ticks, TPB, tempo, out_dir, args.key, args.scale)
+        path = make_bass_drone(chords, args.chord_bars, args.bars, bar_ticks, TPB, tempo,
+                               out_dir, args.key, args.scale)
         print(f"  {os.path.basename(path)}  →  {path}")
     if "arp" in requested:
-        path = make_arp(chords, args.bars, bar_ticks, TPB, tempo, out_dir, args.key, args.scale)
+        path = make_arp(chords, args.chord_bars, args.bars, bar_ticks, TPB, tempo,
+                        out_dir, args.key, args.scale)
         print(f"  {os.path.basename(path)}  →  {path}")
 
     print(f"\nDrop into Ableton on an instrument track. Set project to {args.bpm}bpm.")

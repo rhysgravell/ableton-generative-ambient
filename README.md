@@ -43,6 +43,8 @@ buried-landscapes/
 
 Generates ambient MIDI clips for any key and scale. Defaults to G minor at 80bpm.
 
+The chord, arp and bass clips all follow **one shared chord progression**, so they layer together in tune on separate tracks in Ableton. The melody leans toward the tones of whichever chord is sounding.
+
 ### Install
 
 ```bash
@@ -61,6 +63,12 @@ python3 midi/generate_ambient_midi.py --key D --scale dorian --bpm 72
 # Specific patterns only
 python3 midi/generate_ambient_midi.py --patterns chords bass
 
+# Named progression, four bars per chord
+python3 midi/generate_ambient_midi.py --progression lament --chord-bars 4
+
+# Explicit progression in roman numerals
+python3 midi/generate_ambient_midi.py --progression i-VI-III-VII
+
 # Reproducible output
 python3 midi/generate_ambient_midi.py --seed 42
 
@@ -74,14 +82,37 @@ Output saved to `~/MIDI/Buried_Landscapes/Claude_MIDI/`:
 
 | File | Description |
 |------|-------------|
-| `slow_chords.mid` | Slow evolving chord pads, 1–2 bar sustains |
-| `generative.mid` | Stepwise melodic sequence with rests |
-| `bass_drone.mid` | Very slow root/fifth movement in low register |
-| `arp.mid` | Slow arpeggiated chord sequence, chord changes every 2 bars |
+| `slow_chords.mid` | Chord pads — one progression chord per step |
+| `generative.mid` | Stepwise melodic sequence with rests, biased to chord tones |
+| `bass_drone.mid` | Slow drone on the root of each chord, in a fixed low octave |
+| `arp.mid` | Arpeggiated chord tones, following the progression |
+
+### Chord progressions
+
+`--progression` sets the harmony shared by the chord, arp and bass clips. It takes a named progression, a roman numeral spec, or `random` (the default — a weighted random walk that always starts on the tonic).
+
+| Name | Progression | Character |
+|------|-------------|-----------|
+| `drift` | `i-VI` | Two-chord hover |
+| `lament` | `i-VI-III-VII` | The classic minor loop |
+| `descent` | `i-VII-VI-v` | Stepwise fall |
+| `suspended` | `i-iv-i-v` | Unresolved, circling |
+| `bloom` | `i-III-VII-iv` | Brightening, then back |
+| `static` | `i` | Single-chord drone |
+
+Roman numerals `i`–`vii` are resolved by **scale degree**, so the same spec works in any mode — the scale supplies the chord quality, and case is cosmetic. A trailing `7` asks for a seventh chord:
+
+```bash
+python3 midi/generate_ambient_midi.py --scale dorian --progression i7-iv-VII7-III
+```
+
+`--chord-bars` sets how long each step lasts (default 2). The progression loops to fill `--bars`. Steps of four bars or more move the bass from the root to the fifth halfway through.
 
 ### Available scales
 
 `minor` · `dorian` · `phrygian` · `lydian` · `mixolydian` · `major` · `pentatonic`
+
+Pentatonic has only five degrees, so numerals above `v` are rejected — use `random`, `static`, or a spec within `i`–`v`.
 
 ---
 
