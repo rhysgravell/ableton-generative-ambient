@@ -24,7 +24,9 @@ buried-landscapes/
 │   ├── bpm_sync.py                 # Delay/LFO sync time calculator
 │   └── scale_explorer.py          # Scale notes, chords, and mode relationships
 ├── scripts/
-│   └── organize_project.py        # Organize Ableton Ideas folder into subfolders
+│   ├── organize_project.py        # Organize Ableton Ideas folder into subfolders
+│   ├── assign_artwork.py          # Embed cover artwork into track WAV files
+│   └── assign_artwork.applescript # Set cover artwork on tracks in Music.app
 ├── racks/
 │   ├── scripts/
 │   │   ├── generate_spectral_rack.py   # .adg rack generator
@@ -228,6 +230,23 @@ python3 scripts/organize_project.py ~/Ableton/Buried_Landscapes/Ideas --dry-run
 
 # Apply
 python3 scripts/organize_project.py ~/Ableton/Buried_Landscapes/Ideas
+```
+
+### Assign track artwork
+
+Gives every Buried Landscapes track in Music.app a cover image from `~/Ableton/Artwork` (JPG or PNG, in alphabetical order, cycling round if there are more tracks than images).
+
+The Python version embeds the artwork into the WAV files themselves, so it survives outside Music:
+
+```bash
+pip3 install mutagen
+python3 scripts/assign_artwork.py
+```
+
+The AppleScript version only sets the artwork inside Music.app, with no dependencies:
+
+```bash
+osascript scripts/assign_artwork.applescript
 ```
 
 ---
